@@ -15,8 +15,8 @@ class ReportExporter:
         md += "| :--- | :---: | :--- | :---: |\n"
         
         for res in results:
-            score = f"{res.get('score_final', 0):.1f}" if res.get('confiance_systeme') == 'Haute' else "N/A"
-            md += f"| {res['ville']} | {score} | {res['STATUT_EXECUTION']} | {res['confiance_systeme']} |\n"
+            score = f"{res.get('score_final', 0):.1f}" if res.get('confiance_systeme') == 'Haute' else "Bloqué"
+            md += f"| {res['ville']} | {score} | {res.get('STATUT_EXECUTION', 'N/A')} | {res.get('confiance_systeme', 'N/A')} |\n"
         
         md += "\n---\n\n## 🔍 Détails par Agent\n"
         
@@ -26,9 +26,22 @@ class ReportExporter:
             md += "**Détails Techniques :**\n"
             md += f"- Population : {res.get('population', 0):,}\n"
             md += f"- Infrastructures existantes : {res.get('infrastructures_existantes', 0)}\n"
+            
+            # Correction : Ajout de la métrique d'ordonnancement
+            ratio = res.get('ratio_carence', 0)
+            md += f"- Ratio de Carence (Axel) : {ratio:.2f}\n"
+            
             md += f"- Score Accessibilité (Axel) : {res.get('score_accessibilite', 0)}/100\n"
             md += f"- Score Opportunité (Mathias) : {res.get('score_opportunite_llm', 0)}/100\n"
-            md += f"**Verdict Arbitrage (L'Étudiant) :** {res.get('statut_arbitrage', 'N/A')}\n\n"
+            
+            # Correction : Vrai nom de l'arbitre et justification
+            md += f"\n**Verdict Arbitrage (Mathis M.) :** {res.get('statut_arbitrage', 'N/A')}\n"
+            md += f"*Justification : {res.get('justification_arbitrage', 'Non spécifiée')}*\n\n"
+            
+            # Correction : Mise en valeur visuelle de l'escalade
+            if res.get('confiance_systeme') == 'Faible':
+                md += "⚠️ **ESCALADE HUMAINE :** Le dossier a été gelé en raison d'une contradiction majeure entre les indicateurs Data et IA.\n\n"
+                
             md += "---\n"
             
         return md

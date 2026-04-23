@@ -1,7 +1,6 @@
 import os
 import time
 import requests
-import logging
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
@@ -12,15 +11,20 @@ class APIBudgetManager:
         self.current_calls = 0
         self.history = []
 
-    def call_api(self, target: str, url: str, params: dict = None) -> dict:
+    def record_call(self, target: str, status: str = "Succès"):
+        """Méthode universelle pour logger un appel (utile pour le LLM)."""
         max_calls = int(os.getenv("MAX_DAILY_API_CALLS", 100))
         if self.current_calls >= max_calls:
             raise Exception("API Budget Exceeded")
-        
+            
         self.current_calls += 1
-        sncf_key = os.getenv("SNCF_API_KEY")
+        self.history.append({"target": target, "time": time.strftime("%H:%M:%S"), "status": status})
+
+    def call_api(self, target: str, url: str, params: dict = None) -> dict:
+        # 1. On enregistre d'abord l'intention d'appel
+        self.record_call(target)
         
-        # Nettoyage du nom pour l'API (ex: "Nantes 01" -> "Nantes")
+        sncf_key = os.getenv("SNCF_API_KEY")
         if params and 'q' in params:
             params['q'] = params['q'].split(' ')[0]
 
@@ -28,19 +32,11 @@ class APIBudgetManager:
             auth = (sncf_key, '') if target == "SNCF" else None
             response = requests.get(url, params=params, auth=auth, timeout=5)
             response.raise_for_status()
-            data = response.json()
-            
-            self.history.append({"target": target, "time": time.strftime("%H:%M:%S"), "status": "Succès"})
-            
-            if target == "SNCF":
-                places = data.get("places", [])
-                nb = len([p for p in places if p.get('embedded_type') == 'stop_area'])
-                return {"transport_score": min(100, 40 + (nb * 15))}
-            
-            return data # BAN
+            return response.json()
             
         except Exception as e:
-            self.history.append({"target": target, "time": time.strftime("%H:%M:%S"), "status": "Erreur"})
+            # En cas d'échec, on modifie le dernier statut inséré
+            self.history[-1]["status"] = "Erreur"
             return {"transport_score": 0}
 
 api_manager = APIBudgetManager()
