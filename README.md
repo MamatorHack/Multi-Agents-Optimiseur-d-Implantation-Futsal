@@ -1,91 +1,76 @@
 # ⚽ Multi-Agents Optimizer : Implantation Stratégique Futsal
 
-Ce projet implémente un **Système Multi-Agents (SMA)** complexe dédié à l'optimisation d'implantation commerciale. Il transforme des données brutes hétérogènes (démographie, transport, infrastructures) en décisions d'investissement qualifiées.
+Ce projet implémente un **Système Multi-Agents (SMA) Asynchrone** dédié à l'optimisation d'implantation commerciale. Il transforme des données brutes hétérogènes (démographie, transport, infrastructures) en décisions d'investissement qualifiées, sous de fortes contraintes de ressources informationnelles.
 
 ---
 
 ## 🏗️ Architecture et Philosophie du Système
 
-Le système est conçu selon le paradigme de la **Distribution du Risque**. Contrairement à une IA linéaire, ce SMA fait cohabiter des agents aux intérêts divergents pour garantir la robustesse du verdict final.
+Le système est conçu selon deux paradigmes majeurs de l'ingénierie distribuée : la **Distribution de la Complexité** (Entonnoir de données) et la **Distribution du Risque** (Confrontation d'agents).
 
+### 1. Modèle Blackboard et Multithreading
+Contrairement à un pipeline de traitement linéaire classique, le système déploie un design pattern **Blackboard**. L'Agent Transport (API SNCF) et l'Agent IA (OpenAI) sont exécutés dans des threads parallèles (`ThreadPoolExecutor`). Ils travaillent simultanément sur la même ville et inscrivent leurs résultats de manière indépendante sur un état partagé.
 
-
-### 1. Ingestion et Nettoyage (Data Engineering)
+### 2. Ingestion et Filtrage (Distribution de la Complexité)
 * **Volume de données :** Traitement de la base nationale (35 000+ communes).
-* **Optimisation RAM :** Utilisation de `pandas` avec le paramètre `usecols` et `low_memory=False`. On ne charge que 5 colonnes stratégiques sur les centaines présentes pour éviter le crash mémoire.
-* **Filtres Métier Stricts :** * **Seuil de Population :** Seules les villes de > 20 000 habitants sont conservées (viabilité économique).
-    * **Exclusion Foncière :** Exclusion automatique des "Arrondissements" (Paris, Lyon, Marseille intra-muros). Le coût du foncier y est incompatible avec les surfaces requises pour le Futsal (2500m²+).
-    * **Jointure de données :** Réconciliation des codes INSEE et des noms de communes entre deux bases aux nomenclatures différentes.
+* **Optimisation RAM :** Utilisation de `pandas` avec le paramètre `usecols` pour ne charger que la donnée utile en mémoire.
+* **Filtres Métier Stricts :** Seules les villes de > 20 000 habitants sont conservées. Les arrondissements des grandes villes (Paris, Lyon, Marseille) sont algorithmiquement exclus car le coût du foncier y est incompatible avec la surface requise pour le Futsal (2500m²+).
 
-### 2. Stratégie de Sobriété API (L'Ordonnanceur)
-Pour protéger le budget (OpenAI et SNCF), le système n'analyse pas tout.
-* **Le Ratio de Carence :** Formule mathématique exclusive : $Ratio = \frac{\sqrt{Population}}{Infrastructures + 1}$. 
-* **Lissage Statistique :** L'utilisation de la racine carrée sur la population permet de ne pas sur-évaluer les mégalopoles et de laisser leur chance aux villes moyennes à fort potentiel.
-* **L'Entonnoir :** Seul le Top 10 national (les 10 villes les plus en manque de Futsal) accède aux couches d'IA coûteuses.
+### 3. Ordonnancement et Contrainte API (Sobriété)
+Le cahier des charges impose une limite stricte de 100 appels API par exécution.
+* **Le Ratio de Carence :** Pour définir quelles villes méritent une requête réseau coûteuse, le système classe la France entière via une heuristique propriétaire : $Ratio = \frac{\sqrt{Population}}{Infrastructures\_Existantes + 1}$. 
+* **Lissage Statistique :** La racine carrée empêche les mégalopoles d'écraser l'algorithme et révèle le potentiel des villes moyennes. Seul le "Top 10" est transmis aux agents d'évaluation.
 
 ---
 
-## 👥 Détail Technique des Agents
+## 👥 Rôle et Modélisation des Agents
 
-### Agent 2 : Mathis H. (Data Ingestion)
-Le "Nettoyeur". Il gère les pipelines `Pandas`. Sa mission est de transformer le "bruit" des fichiers `.txt` de l'État en un `Master Dataset` propre. Il résout les erreurs d'encodage (UTF-8/Latin-1) et prépare les dictionnaires de mapping.
+### Agent 1 : Mathis H. (Extracteur & Nettoyeur)
+**Le Data Engineer.** Il ingère les fichiers `.txt` de l'INSEE et de Data.gouv, applique les filtres sémantiques (futsal, soccer) et prépare le `Master Dataset` via des jointures sécurisées, tout en gérant les exceptions de fichiers manquants.
 
-### Agent 1 : Axel (Ordonnanceur)
-Le "Garde-barrière". Il applique les algorithmes de tri et décide quelles villes méritent d'être approfondies. C'est lui qui garantit que le système ne consommera jamais plus que le budget défini dans le fichier `.env`.
+### Agent 2 : Axel (Ordonnanceur)
+**Le Garde-barrière.** Il applique le calcul du *Ratio de Carence* sur l'ensemble du territoire et tronque le portefeuille pour garantir que le système ne dépassera jamais son quota budgétaire (API).
 
-### Agent 3 : Axel (Evaluateur de Transport)
-Le "Géographe". Il communique avec les APIs **SNCF (Hove)** et **BAN (Base Adresse Nationale)**. 
-* **Normalisation :** Il nettoie les noms de villes avant envoi (ex: suppression des extensions).
-* **Fail-safe :** En cas d'erreur API (504 Timeout), il ne bloque pas le système mais dégrade gracieusement la note avec une alerte "Accessibilité nulle".
+### Agent 3 : Axel (Évaluateur de Transport)
+**Le Géographe (Thread-Safe).** Il interroge l'API **SNCF (Hove)** pour mesurer l'accessibilité réelle. Il nettoie la donnée (noms de communes) et applique une formule d'évaluation stricte : $40 + (Nb\_Gares \times 15)$. Il possède un mécanisme *fail-safe* attribuant un score de 0 en cas de timeout réseau, évitant le crash du système.
 
-### Agent 4 : Mathias (Analyste Sémantique LLM)
-Le "Cerveau". Via l'API GPT-4o, il apporte le contexte humain. Il analyse si les 16 infrastructures détectées par la data sont de vrais concurrents ou de simples équipements publics non commerciaux. Il donne un "sentiment" de marché.
+### Agent 4 : Mathias (Analyste Sémantique IA)
+**Le Cerveau Qualitatif.** Exécuté en asynchrone via l'API OpenAI (`gpt-4o-mini`). 
+* **Décorrélation :** Il évalue la ville "à l'aveugle" (uniquement sur le nom) pour ne pas reproduire le calcul mathématique de l'Ordonnanceur. 
+* **Self-Reflection :** L'agent analyse sa propre sortie JSON. S'il détecte une dissonance entre son texte (pessimiste) et son score numérique (élevé), il lève un drapeau d'hallucination (`coherence_llm = False`).
 
 ### Agent 5 : Mathis M. (Arbitre de Risque)
-Le "Juge". C'est l'agent le plus critique. Il calcule l'**Écart de Risque**. 
-* **Logique :** Si $Ecart = |Score_{Data} - Score_{IA}| > 40$, il considère que le système est en contradiction. 
-* **Action :** Il bloque le calcul du score final pour forcer une **Escalade Humaine**, protégeant ainsi l'investisseur d'une erreur algorithmique.
+**Le Juge du Blackboard.** C'est le cœur de la distribution du risque. Il lit les scores asynchrones de l'Agent 3 (Data pure) et de l'Agent 4 (IA).
+* **Consensus :** Si l'écart est $\leq 40$, il valide le dossier avec une pondération (40% Transport, 60% IA).
+* **Conflit :** Si l'écart est $> 40$, il annule le calcul moyen. Il considère que l'un des agents se trompe lourdement, marque la confiance comme "Faible", et justifie textuellement ce désaccord.
 
 ### Agent 6 : Louis (Modérateur)
-Le "Décideur". Il traduit les scores en actions concrètes :
-* **INVESTISSEMENT VALIDÉ :** Score > 80 + Consensus.
-* **ÉTUDE COMPLÉMENTAIRE :** Score 70-80.
-* **DOSSIER REJETÉ :** Score < 70 (Protection du capital).
+**Le Décideur.** Il gouverne la sortie finale du système en statuant sur le risque :
+* **ESCALADE_HUMAINE_REQUISE :** En cas de conflit (Dossier gelé).
+* **RECOMMANDATION_FORTE (Go) :** Score $\geq 80$ validé.
+* **RECOMMANDATION (À l'étude) / SIMPLE_INFORMATION :** Scores intermédiaires.
 
 ---
 
-## 💻 Interface et Transparence (Streamlit)
+## 💻 Observabilité et Paradigme "Boîte de Verre"
 
-L'interface a été conçue pour offrir une **Traceabilité Totale** (Audit Trail). Un utilisateur novice peut comprendre chaque décision grâce au Journal d'Audit qui expose les "pensées" de chaque agent en temps réel.
+Contrairement aux systèmes d'IA dits "boîte noire", notre SMA offre une traçabilité totale des décisions via une interface de gouvernance **Streamlit**.
 
-
-
-* **Monitoring API :** Visualisation en direct de la consommation du budget.
-* **Indicateur de Risque :** Affichage dynamique des consensus ou des conflits d'arbitrage.
-* **Rapport Stratégique :** Synthèse automatique élisant la meilleure ville de France pour l'investissement.
+* **Monitoring Transversal :** L'outil `APIBudgetManager` écoute tous les agents via une méthode universelle (`record_call`) et actualise en temps réel la consommation API sur l'interface (preuve de la sobriété à ~20/100).
+* **Journal d'Audit Interactif :** Les décideurs peuvent auditer les justifications de l'Arbitre (Mathis M.) et l'analyse brute du LLM (Mathias) pour chaque dossier évalué.
+* **Export Markdown :** Un module dédié (`exporter.py`) génère un rapport final consignant le Ratio de Carence initial, les verdicts et les alertes de sécurité.
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Installation et Déploiement
 
-### 1. Préparation des données
-Téléchargez les bases suivantes :
-1. [INSEE - Populations légales 2021](https://www.insee.fr/fr/statistiques/8205247) -> Placer dans `data/insee_demographie.txt`
-2. [Ministère des Sports - Equipements](https://www.data.gouv.fr/datasets/recensement-des-equipements-sportifs-espaces-et-sites-de-pratiques-2) -> Placer dans `data/equipements_sportifs.txt`
+### 1. Préparation des données brutes
+* [INSEE - Populations légales 2021](https://www.insee.fr/fr/statistiques/8205247) $\rightarrow$ `data/insee_demographie.txt`
+* [Ministère des Sports - Équipements](https://www.data.gouv.fr/datasets/recensement-des-equipements-sportifs-espaces-et-sites-de-pratiques-2) $\rightarrow$ `data/equipements_sportifs.txt`
 
-### 2. Déploiement
-```bash
-git clone https://github.com/MamatorHack/Multi-Agents-Optimiseur-d-Implantation-Futsal
-pip install -r requirements.txt
-streamlit run app.py
-```
-
-### 3. Variables d'Environnement (.env)
+### 2. Variables d'Environnement (`.env`)
+Créez un fichier `.env` à la racine :
 ```env
-OPENAI_API_KEY=votre_cle
-SNCF_API_KEY=votre_cle
+OPENAI_API_KEY=sk-xxxx...
+SNCF_API_KEY=votre_cle_hove
 MAX_DAILY_API_CALLS=100
-```
-
----
-**Développé par l'équipe : Mathis M., Mathis H., Axel, Mathias, Louis.**
